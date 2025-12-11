@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pet Care Scheduler</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa6b2; --accent:#60a5fa; --accent-2:#7c3aed;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; background:linear-gradient(180deg,var(--bg), #081022); color:#e6eef6; min-height:100vh;}
+    .wrap{max-width:980px;margin:32px auto;padding:20px}
+
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:4px 0 0;color:var(--muted);font-size:13px}
+
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:18px}
+    .card{background:linear-gradient(180deg,var(--card), rgba(11,18,32,0.85));border-radius:14px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .section-title h2{font-size:15px;margin:0}
+    small{color:var(--muted)}
+
+    form.row{display:flex;gap:8px;flex-wrap:wrap}
+    input,select,textarea{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:inherit;font-size:14px}
+    input[type="time"]{min-width:110px}
+    button{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:0;padding:8px 12px;border-radius:10px;color:white;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+
+    ul.list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+    li.item{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:10px;background:rgba(255,255,255,0.02)}
+    .meta{display:flex;gap:12px;align-items:center}
+    .tag{font-size:12px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);color:var(--muted)}
+    .time{font-weight:600}
+
+    .small-muted{font-size:12px;color:var(--muted)}
+
+    .controls{display:flex;gap:6px}
+    .pill{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:13px}
+
+    /* responsive */
+    @media (max-width:900px){.grid{grid-template-columns:1fr;}}
+
+    footer{margin-top:18px;color:var(--muted);font-size:13px;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Pet Care Scheduler</h1>
+        <p class="lead">Keep track of feeding, walks and veterinary appointments. Saves to your browser.</p>
+      </div>
+      <div class="pill small-muted">Local time: <span id="localTime">--:--</span></div>
+    </header>
+
+    <section class="grid">
+      <main class="card">
+        <div class="section-title"><h2>Today's Tasks</h2><small id="todayDate"></small></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <button id="btnShowAll" class="ghost">Show all</button>
+          <button id="btnShowUpcoming" class="ghost">Upcoming</button>
+          <button id="btnClearDone" class="ghost">Clear done</button>
+        </div>
+
+        <h3 style="margin:12px 0 6px;font-size:14px">Feedings & Walks</h3>
+        <ul id="listDaily" class="list" aria-live="polite"></ul>
+
+        <h3 style="margin:14px 0 6px;font-size:14px">Vet Appointments</h3>
+        <ul id="listVet" class="list" aria-live="polite"></ul>
+
+      </main>
+
+      <aside class="card">
+        <div class="section-title"><h2>Add a Task</h2><small>Feeding, Walk or Vet</small></div>
+
+        <form id="taskForm" class="row" onsubmit="return false;">
+          <select id="taskType" aria-label="Task type">
+            <option value="feeding">Feeding</option>
+            <option value="walk">Walk</option>
+            <option value="vet">Vet Appointment</option>
+          </select>
+
+          <input id="taskLabel" placeholder="Label (e.g. Breakfast, Morning Walk)" required />
+          <input id="taskDate" type="date" />
+          <input id="taskTime" type="time" />
+
+          <textarea id="taskNotes" placeholder="Notes (optional)" rows="2"></textarea>
+
+          <div style="display:flex;gap:8px;width:100%">
+            <button id="btnAdd">Add</button>
+            <button id="btnQuickMorning" class="ghost">Quick: Morning Feed</button>
+          </div>
+        </form>
+
+        <hr style="border:none;height:1px;background:rgba(255,255,255,0.03);margin:12px 0">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <small class="small-muted">Reminders</small>
+            <label style="font-size:13px"><input id="toggleAlerts" type="checkbox" checked /> Enable alerts</label>
+          </div>
+          <small class="small-muted">When enabled, and this page is open, the scheduler will alert you at the scheduled time.</small>
+        </div>
+
+      </aside>
+    </section>
+
+    <footer class="small-muted">Tip: use the Quick buttons to add common tasks. Data is saved to your browser (localStorage).</footer>
+  </div>
+
+  <script>
+    /* --- Simple Pet Care Scheduler ---
+       Features:
+       - Add/edit/delete tasks for feeding, walks, and vet appointments
+       - Persist to localStorage
+       - Basic upcoming filter and alerts when page is open
+    */
+
+    const STORE_KEY = 'petcare.tasks.v1';
+    let tasks = [];
+
+    const qs = id => document.getElementById(id);
+    const listDaily = qs('listDaily');
+    const listVet = qs('listVet');
+    const taskForm = qs('taskForm');
+    const btnAdd = qs('btnAdd');
+    const btnQuickMorning = qs('btnQuickMorning');
+    const btnShowAll = qs('btnShowAll');
+    const btnShowUpcoming = qs('btnShowUpcoming');
+    const btnClearDone = qs('btnClearDone');
+    const toggleAlerts = qs('toggleAlerts');
+    const localTimeEl = qs('localTime');
+    const todayDateEl = qs('todayDate');
+
+    // helpers
+    function nowISO(){ return new Date().toISOString(); }
+    function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(tasks)); }
+    function load(){ try{ tasks = JSON.parse(localStorage.getItem(STORE_KEY)) || []; }catch(e){ tasks = []; } }
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+
+    function formatDateShort(iso){ if(!iso) return '--'; const d=new Date(iso); return d.toLocaleString(); }
+    function isToday(iso){ if(!iso) return false; const d=new Date(iso); const t=new Date(); return d.toDateString() === t.toDateString(); }
+
+    // render
+    function render(){
+      listDaily.innerHTML = '';
+      listVet.innerHTML = '';
+
+      const sorted = [...tasks].sort((a,b)=> (a.datetime||'').localeCompare(b.datetime||''));
+
+      for(const t of sorted){
+        const li = document.createElement('li'); li.className='item';
+        const meta = document.createElement('div'); meta.className='meta';
+        const main = document.createElement('div');
+
+        const typeTag = document.createElement('div'); typeTag.className='tag'; typeTag.textContent = capitalize(t.type);
+        const title = document.createElement('div'); title.innerHTML = `<strong>${escapeHtml(t.label)}</strong> <div class='small-muted'>${t.notes?escapeHtml(t.notes):''}</div>`;
+
+        const timeEl = document.createElement('div'); timeEl.className='time'; timeEl.textContent = t.datetime ? new Date(t.datetime).toLocaleString() : 'No time set';
+
+        main.appendChild(title);
+        meta.appendChild(typeTag);
+        meta.appendChild(timeEl);
+
+        const controls = document.createElement('div'); controls.className='controls';
+        const doneBtn = document.createElement('button'); doneBtn.className='ghost'; doneBtn.textContent = t.done ? 'Undone' : 'Done';
+        doneBtn.onclick = ()=>{ t.done = !t.done; save(); render(); };
+
+        const editBtn = document.createElement('button'); editBtn.className='ghost'; editBtn.textContent = 'Edit';
+        editBtn.onclick = ()=> editTask(t.id);
+
+        const delBtn = document.createElement('button'); delBtn.className='ghost'; delBtn.textContent = 'Delete';
+        delBtn.onclick = ()=>{ if(confirm('Delete this task?')){ tasks = tasks.filter(x=>x.id!==t.id); save(); render(); }};
+
+        controls.appendChild(doneBtn); controls.appendChild(editBtn); controls.appendChild(delBtn);
+
+        li.appendChild(main);
+        li.appendChild(meta);
+        li.appendChild(controls);
+
+        if(t.type === 'vet') listVet.appendChild(li); else listDaily.appendChild(li);
+      }
+
+      // update date/time header
+      localTimeEl.textContent = new Date().toLocaleTimeString();
+      todayDateEl.textContent = new Date().toLocaleDateString();
+    }
+
+    // escape helper
+    function escapeHtml(str){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[s]); }
+    function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+    // add task
+    btnAdd.addEventListener('click', ()=>{
+      const type = qs('taskType').value;
+      const label = qs('taskLabel').value.trim();
+      const date = qs('taskDate').value;
+      const time = qs('taskTime').value;
+      const notes = qs('taskNotes').value.trim();
+
+      if(!label){ alert('Please add a label for the task'); return; }
+
+      let datetime = null;
+      if(date || time){
+        // combine date and time if possible
+        if(!date){ const d = new Date(); datetime = combineDateTime(d.toISOString().slice(0,10), time || '00:00'); }
+        else if(!time) datetime = combineDateTime(date, '09:00');
+        else datetime = combineDateTime(date, time);
+      }
+
+      const item = { id: uid(), type, label, notes, datetime, created: nowISO(), done:false };
+      tasks.push(item); save(); render(); clearForm();
+      scheduleAlertFor(item);
+    });
+
+    btnQuickMorning.addEventListener('click', ()=>{
+      const tomorrow = new Date(); // today morning
+      const dstr = tomorrow.toISOString().slice(0,10);
+      qs('taskType').value='feeding'; qs('taskLabel').value='Morning Feed'; qs('taskDate').value=dstr; qs('taskTime').value='08:00'; qs('taskNotes').value='Kibble + probiotics';
+    });
+
+    btnShowAll.addEventListener('click', ()=>{ render(); });
+    btnShowUpcoming.addEventListener('click', ()=>{ renderUpcoming(); });
+    btnClearDone.addEventListener('click', ()=>{ tasks = tasks.filter(t=>!t.done); save(); render(); });
+
+    function clearForm(){ qs('taskLabel').value=''; qs('taskDate').value=''; qs('taskTime').value=''; qs('taskNotes').value=''; }
+
+    function combineDateTime(dateStr, timeStr){ // dateStr yyyy-mm-dd, timeStr hh:mm
+      const iso = dateStr + 'T' + (timeStr || '00:00') + ':00';
+      return new Date(iso).toISOString();
+    }
+
+    function editTask(id){
+      const t = tasks.find(x=>x.id===id); if(!t) return;
+      const newLabel = prompt('Edit label', t.label); if(newLabel === null) return;
+      t.label = newLabel.trim();
+      const newNotes = prompt('Notes', t.notes||''); if(newNotes!==null) t.notes = newNotes;
+      save(); render();
+    }
+
+    function renderUpcoming(){
+      const upcoming = tasks.filter(t=>t.datetime && new Date(t.datetime) > new Date()).sort((a,b)=> new Date(a.datetime)-new Date(b.datetime));
+      listDaily.innerHTML=''; listVet.innerHTML='';
+      if(upcoming.length===0){ listDaily.innerHTML='<li class="small-muted">No upcoming tasks</li>'; return; }
+      for(const t of upcoming){
+        const li = document.createElement('li'); li.className='item';
+        li.innerHTML = `<div><strong>${escapeHtml(t.label)}</strong><div class='small-muted'>${escapeHtml(t.notes||'')}</div></div><div class='time'>${new Date(t.datetime).toLocaleString()}</div>`;
+        if(t.type==='vet') listVet.appendChild(li); else listDaily.appendChild(li);
+      }
+    }
+
+    // simple alert scheduler (ONLY works while page open)
+    function scheduleAllAlerts(){
+      if(!toggleAlerts.checked) return;
+      const now = Date.now();
+      for(const t of tasks){ scheduleAlertFor(t); }
+    }
+
+    const scheduledTimers = {};
+    function scheduleAlertFor(t){
+      if(!toggleAlerts.checked) return;
+      if(!t.datetime) return;
+      const then = new Date(t.datetime).getTime();
+      const delta = then - Date.now();
+      if(delta <= 0) return; // past
+      // clear existing
+      if(scheduledTimers[t.id]){ clearTimeout(scheduledTimers[t.id]); }
+      scheduledTimers[t.id] = setTimeout(()=>{
+        alert(`Reminder: ${t.type.toUpperCase()} — ${t.label} at ${new Date(t.datetime).toLocaleString()}`);
+      }, Math.min(delta, 2147483647)); // cap for setTimeout
+    }
+
+    // boot
+    load(); render(); scheduleAllAlerts();
+
+    // update live time every 30s
+    setInterval(()=>{ localTimeEl.textContent = new Date().toLocaleTimeString(); }, 30000);
+
+    // export/import (optional quick helpers)
+    window.petcare = {
+      export: ()=> JSON.stringify(tasks, null, 2),
+      import: (json)=>{ try{ tasks = JSON.parse(json); save(); render(); }catch(e){ alert('Invalid JSON'); } }
+    };
+
+  </script>
+</body>
+</html>
